@@ -17,9 +17,9 @@ long_response_col = ['In your own words, what kinds of tasks would you use this 
                     'When you verify a response from this model, how do you usually go about it?' ]
 
 
-#reading in data
+#reading in data, get just first 743
 path = Path(__file__).parent.parent / "data/training_data_clean.csv"
-data = pd.read_csv(path)
+data = pd.read_csv(path).head(744)
 
 #number unqique in each column:
 def num_unique():
@@ -38,7 +38,7 @@ def num_long_response(n: int):
 
     return dic
 
-#plot single categorical across labels, in progress
+#plot single categorical across labels, likhert plot
 def plot_single_category(categories = single_categorical_col):
     for category in categories:
         plt.figure(figsize=(14, 7))
@@ -61,13 +61,13 @@ def plot_single_category(categories = single_categorical_col):
 
         # plot likhert
         midpoint = 3
-        
+
         # separate negative and positive sides
         neg_cols = sorted([col for col in counts.columns if col < midpoint])
-        pos_cols = sorted([col for col in counts.columns if col >= midpoint])
+        pos_cols = sorted([col for col in counts.columns if col > midpoint])
 
-        # plot negative side (left) - start from furthest left
-        left_pos = -counts[neg_cols].sum(axis=1)
+        # plot negative side
+        left_pos = -counts[neg_cols].sum(axis=1) - counts[3] / 2
         for col in neg_cols:  # plot in order: 1, 2
             plt.barh(
                 counts.index,
@@ -77,8 +77,17 @@ def plot_single_category(categories = single_categorical_col):
             )
             left_pos += counts[col]
 
-        # plot positive side (right) - start from 0 and go right
-        left_pos = pd.Series(0, index=counts.index)
+        #plot neutral
+        left_pos = -counts[3] / 2
+        plt.barh(
+            counts.index,
+            counts[3],
+            left = left_pos,
+            label = str(col)
+        )
+
+        # plot positive side
+        left_pos = pd.Series(counts[3] // 2, index=counts.index)
         for col in pos_cols:
             plt.barh(
                 counts.index,
@@ -92,48 +101,55 @@ def plot_single_category(categories = single_categorical_col):
         plt.xlabel('Percentage (%)')
         plt.ylabel('Model')
 
-        
+        #legend, sorted
         responses = sorted([v for v in y.unique() if pd.notna(v)], key=lambda v: int(str(v)[0]))
         plt.legend(title='Response', labels = responses, bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.xlim(-100, 100)
         plt.xticks(range(-100, 101, 20), [f"{abs(x)}%" for x in range(-100, 101, 20)])
 
         plt.tight_layout()
-        
-        filename = "_".join(str(category).split(" ")[:5]) + ".png"
+
+        #save
+        filename = "_".join(str(category).split(" ")[:5])
         path = Path(__file__).parent.parent / f"figures/{filename}.png"
         plt.savefig(path, dpi = 300)
-        plt.show()
+        # plt.show()
 
 
 def plot_length():
     for category in long_response_col:
         temp = data.copy()
-        temp["count"] = data[category].str.len()
-
-        # Create bins (e.g., 0-50, 51-100, 101-150, etc.)
+        temp["count"] = data[category].apply(lambda x: len(str(x)) if pd.notna(x) else 0)
+        
+        # bins
         bins = [0, 50, 100, 150, 200, 250, 300, 500, 1000, float('inf')]
-        labels = ['0-50', '51-100', '101-150', '151-200', '201-250', '251-300', '301-500', '501-1000', '1000+']
-        temp['length_bin'] = pd.cut(temp['count'], bins=bins, labels=labels, right=True)
+        bin_labels = ['0-50', '51-100', '101-150', '151-200', '201-250', '251-300', '301-500', '501-1000', '1000+']
+        temp['length_bin'] = pd.cut(temp['count'], bins=bins, labels=bin_labels, right=True)
         
-        # Count responses in each bin
-        bin_counts = temp['length_bin'].value_counts().sort_index()
+        # count per bin
+        grouped = temp.groupby(['label', 'length_bin']).size().unstack(fill_value=0)
         
-        # Plot
-        plt.figure(figsize=(10, 6))
-        plt.bar(range(len(bin_counts)), bin_counts.values)
-        plt.xticks(range(len(bin_counts)), bin_counts.index, rotation=45)
+        # multi-bar
+        plt.figure(figsize=(14, 6))
+        x = np.arange(len(grouped.columns))
+        width = 0.25
+        
+        for i, label in enumerate(grouped.index):
+            offset = (i - len(grouped.index)/2 + 0.5) * width
+            plt.bar(x + offset, grouped.loc[label], width, label=label)
+        
         plt.xlabel('Response Length Range (characters)')
         plt.ylabel('Number of Responses')
-        plt.title(f'Distribution of Response Lengths: {category}')
+        plt.title(f'Distribution of Response Lengths by Model: {category}')
+        plt.xticks(x, grouped.columns, rotation=45, ha='right')
+        plt.legend(title='Model')
         plt.tight_layout()
         
-        # Save
-        filename = "_".join(str(category).split(" ")[:5]) + "_lengths.png"
+        # save
+        filename = "_".join(str(category).split(" ")[:5]) + "_lengths_by_model.png"
         path = Path(__file__).parent.parent / "figures" / filename
-        path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(path, dpi=300, bbox_inches='tight')
-        plt.show()
+        # plt.show()
 
 
 
@@ -141,5 +157,5 @@ def plot_length():
 if __name__ == "__main__":
     # print(num_unique())
     # print(num_long_response(10))
-    # plot_single_category()
+    plot_single_category()
     plot_length()
