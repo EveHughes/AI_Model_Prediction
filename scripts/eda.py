@@ -18,7 +18,7 @@ long_response_col = ['In your own words, what kinds of tasks would you use this 
 
 
 #reading in data
-path = Path(__file__).parent / "data/training_data_clean.csv"
+path = Path(__file__).parent.parent / "data/training_data_clean.csv"
 data = pd.read_csv(path)
 
 #number unqique in each column:
@@ -101,12 +101,45 @@ def plot_single_category(categories = single_categorical_col):
         plt.tight_layout()
         
         filename = "_".join(str(category).split(" ")[:5]) + ".png"
-        path = Path(__file__).parent / f"figures/{filename}.png"
+        path = Path(__file__).parent.parent / f"figures/{filename}.png"
         plt.savefig(path, dpi = 300)
         plt.show()
+
+
+def plot_length():
+    for category in long_response_col:
+        temp = data.copy()
+        temp["count"] = data[category].str.len()
+
+        # Create bins (e.g., 0-50, 51-100, 101-150, etc.)
+        bins = [0, 50, 100, 150, 200, 250, 300, 500, 1000, float('inf')]
+        labels = ['0-50', '51-100', '101-150', '151-200', '201-250', '251-300', '301-500', '501-1000', '1000+']
+        temp['length_bin'] = pd.cut(temp['count'], bins=bins, labels=labels, right=True)
+        
+        # Count responses in each bin
+        bin_counts = temp['length_bin'].value_counts().sort_index()
+        
+        # Plot
+        plt.figure(figsize=(10, 6))
+        plt.bar(range(len(bin_counts)), bin_counts.values)
+        plt.xticks(range(len(bin_counts)), bin_counts.index, rotation=45)
+        plt.xlabel('Response Length Range (characters)')
+        plt.ylabel('Number of Responses')
+        plt.title(f'Distribution of Response Lengths: {category}')
+        plt.tight_layout()
+        
+        # Save
+        filename = "_".join(str(category).split(" ")[:5]) + "_lengths.png"
+        path = Path(__file__).parent.parent / "figures" / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+
 
 #run everything
 if __name__ == "__main__":
     # print(num_unique())
     # print(num_long_response(10))
-    plot_single_category()
+    # plot_single_category()
+    plot_length()
