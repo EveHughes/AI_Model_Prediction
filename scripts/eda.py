@@ -4,6 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+#categories
 multiple_categorical_col = ['Which types of tasks do you feel this model handles best? (Select all that apply.)', 
                    'For which types of tasks do you feel this model tends to give suboptimal responses? (Select all that apply.)']
 
@@ -15,6 +16,9 @@ single_categorical_col = ['How likely are you to use this model for academic tas
 long_response_col = ['In your own words, what kinds of tasks would you use this model for?',
                      'Think of one task where this model gave you a suboptimal response. What did the response look like, and why did you find it suboptimal?',
                     'When you verify a response from this model, how do you usually go about it?' ]
+
+#colors for likhert plot
+colors = ["#FF5733", "#FA8B73", "#EACBFF", "#83B8FD", "#2F88FD"]
 
 
 #reading in data, get just first 743
@@ -39,7 +43,7 @@ def num_long_response(n: int):
     return dic
 
 #plot single categorical across labels, likhert plot
-def plot_single_category(categories = single_categorical_col):
+def likhert_plot(categories = single_categorical_col):
     for category in categories:
         plt.figure(figsize=(14, 7))
 
@@ -56,46 +60,26 @@ def plot_single_category(categories = single_categorical_col):
         temp['int_y'] = temp['int_y'].astype(int)
 
         # count responses by label and integer value & convert to %
-        counts = temp.groupby(['label', 'int_y']).size().unstack(fill_value=0)
+        counts = temp.groupby(['label', 'int_y'], observed = False).size().unstack(fill_value=0)
         counts = counts.div(counts.sum(axis=1), axis=0) * 100
 
         # plot likhert
         midpoint = 3
+        color_index  = 0
 
-        # separate negative and positive sides
         neg_cols = sorted([col for col in counts.columns if col < midpoint])
-        pos_cols = sorted([col for col in counts.columns if col > midpoint])
 
-        # plot negative side
-        left_pos = -counts[neg_cols].sum(axis=1) - counts[3] / 2
-        for col in neg_cols:  # plot in order: 1, 2
+        left_pos = -counts[neg_cols].sum(axis = 1) - counts[3] / 2
+        for col in counts.columns:
             plt.barh(
                 counts.index,
                 counts[col],
                 left=left_pos,
-                label=str(col)
+                label=str(col),
+                color = colors[color_index]
             )
             left_pos += counts[col]
-
-        #plot neutral
-        left_pos = -counts[3] / 2
-        plt.barh(
-            counts.index,
-            counts[3],
-            left = left_pos,
-            label = str(col)
-        )
-
-        # plot positive side
-        left_pos = pd.Series(counts[3] // 2, index=counts.index)
-        for col in pos_cols:
-            plt.barh(
-                counts.index,
-                counts[col],
-                left=left_pos,
-                label=str(col)
-            )
-            left_pos += counts[col]
+            color_index += 1
 
         plt.title(category)
         plt.xlabel('Percentage (%)')
@@ -127,7 +111,7 @@ def plot_length():
         temp['length_bin'] = pd.cut(temp['count'], bins=bins, labels=bin_labels, right=True)
         
         # count per bin
-        grouped = temp.groupby(['label', 'length_bin']).size().unstack(fill_value=0)
+        grouped = temp.groupby(['label', 'length_bin'], observed = False).size().unstack(fill_value=0)
         
         # multi-bar
         plt.figure(figsize=(14, 6))
@@ -157,5 +141,5 @@ def plot_length():
 if __name__ == "__main__":
     # print(num_unique())
     # print(num_long_response(10))
-    plot_single_category()
-    plot_length()
+    likhert_plot()
+    # plot_length()
