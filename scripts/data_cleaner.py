@@ -69,7 +69,17 @@ if __name__ == "__main__":
         out_file = 'data/cleaned_data.csv'
         out_dir = os.path.dirname(out_file) or '.'
         os.makedirs(out_dir, exist_ok=True)
+
+        train_file = os.path.join(out_dir, 'train_data.csv')
+        test_file = os.path.join(out_dir, 'test_data.csv')
+
+        test_data = data.iloc[743:]
+        train_data = data.drop(test_data.index)
         
-        data.to_csv(out_file, index=False)
+        test_data.to_csv(test_file, index=False)
+        print(f"Test data (rows 744-825) saved to: {test_file}")
+
+        train_data.to_csv(train_file, index=False)
+        print(f"Train data (all other rows) saved to: {train_file}")
         
         print(f"\nData cleaning and vectorization complete. Cleaned data saved to: {out_file}")
