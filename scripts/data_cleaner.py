@@ -73,7 +73,7 @@ if __name__ == "__main__":
         train_file = os.path.join(out_dir, 'train_data.csv')
         test_file = os.path.join(out_dir, 'test_data.csv')
 
-        test_data = data.iloc[743:]
+        test_data = data.iloc[744:]
         train_data = data.drop(test_data.index)
         
         test_data.to_csv(test_file, index=False)
