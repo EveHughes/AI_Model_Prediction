@@ -1,9 +1,13 @@
 from pathlib import Path
 import pandas as pd
+import numpy as np
+
+from itertools import product
 
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import confusion_matrix
 
 ##################################################
 ################# VARIABLES  ####################
@@ -14,20 +18,36 @@ NON_NUMERIC = [ 'In your own words, what kinds of tasks would you use this model
                      'Think of one task where this model gave you a suboptimal response. What did the response look like, and why did you find it suboptimal?',
                     'When you verify a response from this model, how do you usually go about it?']
 
-NA_COLS = ['Based on your experience, how often has this model given you a response that felt suboptimal?', 'How often do you expect this model to provide responses with references or supporting evidence?', "How often do you verify this model's responses?"]
+NA_COLS = ['Based on your experience, how often has this model given you a response that felt suboptimal?', 
+           'How often do you expect this model to provide responses with references or supporting evidence?', 
+           "How often do you verify this model's responses?"]
 
 LABELS = ['student_id', 'label']
 
 # File Paths
+BASE_PATH = Path(__file__).parent
 DATA_PATH = Path(__file__).parent.parent / "data/train_data.csv"
-TRAIN_PATH = Path(__file__).parent / "mlp_data/mlp_train_data.csv"
-FILLED_TRAIN_PATH = Path(__file__).parent / "mlp_data/mlp_filled_train_data.csv"
-MODEL1_GRID_PATH = Path(__file__).parent / "mlp_data/model1_grid.csv"
-MODEL2_GRID_PATH = Path(__file__).parent / "mlp_data/model2_grid.csv"
+TRAIN_PATH =  BASE_PATH / "mlp_cleaned_data/mlp_train_data.csv"
+FILLED_TRAIN_PATH = BASE_PATH / "mlp_cleaned_data/mlp_filled_train_data.csv"
+MODEL1_GRID_PATH = BASE_PATH / "mlp_grid_search/model1_grid.csv"
+MODEL2_GRID_PATH = BASE_PATH / "mlp_grid_search/model2_grid.csv"
+MODEL_WEIGHT_BIAS_PATH = BASE_PATH / "mlp_model_vals/model_weights_biases.npz"
+DATA_MEAN_STD_PATH = BASE_PATH / "mlp_model_vals/data_mean_std.csv"
+
+
+# Grid Search
+all_tuples = list(product(range(58, 60), range(18, 20)))
+GRID_PARAMS = {
+    "hidden_layer_sizes": all_tuples,
+    "learning_rate_init": [0.001, 0.01],
+    "alpha" : [1e-5],
+    "activation": ["relu", "tanh"],
+    "solver" : ['adam', 'sgd']
+    }
 
 
 ##################################################
-######### SAVING DATA AND FILLING #############
+########### SAVING DATA AND FILLING ##############
 ##################################################
 
 # Save unfilled data
@@ -56,6 +76,19 @@ def save_filled_data():
 
     data.to_csv(FILLED_TRAIN_PATH)
 
+# saves mean and standard dev for scaling
+def get_mean_std():
+    train_data = pd.read_csv(FILLED_TRAIN_PATH, index_col = 0)
+    X_train = train_data.drop(LABELS, axis = 1)
+    
+    scaler = StandardScaler()
+    scaler.fit(X_train)
+    scaling_params = pd.DataFrame({
+    'mean': scaler.mean_,
+    'std': scaler.scale_
+    }, index=X_train.columns)
+
+    scaling_params.to_csv(DATA_MEAN_STD_PATH)
 
 ##################################################
 ########## CREATING MODEL WITH NO NULL ###########
@@ -72,16 +105,10 @@ def create_model1():
     X_train_scaled = scaler.fit_transform(X_train)
 
     #grid search
-    param_grid = {
-        "hidden_layer_sizes": [(50, 20), (60, 20), (70, 20)],
-        "learning_rate_init": [0.001, 0.01],
-        "alpha" : [1e-3, 1e-4, 1e-5],
-        "solver" : ['adam', 'sgd']
-    }
     model = MLPClassifier(max_iter=1000, random_state=1, batch_size = 33)
     grid = GridSearchCV(
         model,
-        param_grid,
+        GRID_PARAMS,
         cv=5,
         scoring="accuracy",
         n_jobs=-1,
@@ -97,12 +124,9 @@ def create_model1():
     results = results.sort_values(by='mean_test_score', ascending=False)
     results.to_csv(MODEL1_GRID_PATH)
 
-    #model
-    model1 = grid.best_estimator_
-
 
 ##################################################
-######### CREATING MODEL THAT FILLS NULL ##########
+######### CREATING MODEL THAT FILLS NULL #########
 ##################################################
 
 def create_model2():
@@ -115,18 +139,12 @@ def create_model2():
     X_train_scaled = scaler.fit_transform(X_train)
 
     #grid search
-    param_grid = {
-        "hidden_layer_sizes": [(50, 20), (60, 20), (70, 20)],
-        "learning_rate_init": [0.001, 0.01],
-        "alpha" : [1e-3, 1e-4, 1e-5],
-        "solver" : ['adam', 'sgd']
-    }
     model = MLPClassifier(max_iter=1000, random_state=1, batch_size = 33)
     grid = GridSearchCV(
         model,
-        param_grid,
+        GRID_PARAMS,
         cv=5,
-        scoring="accuracy",
+        scoring="f1_macro",
         n_jobs=-1,
         verbose=1
     )
@@ -136,16 +154,66 @@ def create_model2():
     print("Best params:", grid.best_params_)
     print("Best CV score:", grid.best_score_)
     results = pd.DataFrame(grid.cv_results_)
-    results = results[['param_hidden_layer_sizes', 'param_learning_rate_init', 'param_solver', 'param_alpha', 'mean_test_score', 'std_test_score']]
+    results = results[['param_hidden_layer_sizes', 'param_activation', 'param_learning_rate_init', 'param_solver', 'param_alpha', 'mean_test_score', 'std_test_score']]
     results = results.sort_values(by='mean_test_score', ascending=False)
     results.to_csv(MODEL2_GRID_PATH)
 
     #model
     model2 = grid.best_estimator_
+    y_pred = model2.predict(X_train_scaled)
+
+    # Confusion matrix
+    cm = confusion_matrix(t_train, y_pred)
+    print("Best Params:", grid.best_params_)
+    print("Confusion Matrix:\n", cm)
+
+
+##################################################
+###### TRAINING BEST MODEL FROM GRIDSEARCH #######
+##################################################
+
+def best_model():
+    #get data
+    train_data = pd.read_csv(FILLED_TRAIN_PATH, index_col = 0)
+    t_train = train_data["label"]
+
+    scaler = StandardScaler()
+    X_train = train_data.drop(LABELS, axis = 1)
+    X_train_scaled = scaler.fit_transform(X_train)
+
+    model = MLPClassifier(max_iter=1000, 
+                          random_state=1, 
+                          batch_size = 33, 
+                          hidden_layer_sizes=(59, 18),
+                          learning_rate_init=0.001,
+                          solver='sgd',
+                          alpha=1e-05
+    )
+    model.fit(X_train_scaled, t_train)
+
+    #model accuracy on training data
+    train_accuracy = model.score(X_train_scaled, t_train)
+    print(f"Training Accuracy: {train_accuracy:.4f}")
+
+    #exporting weights and biases
+    np.savez_compressed(
+        MODEL_WEIGHT_BIAS_PATH,
+        weights_0=model.coefs_[0],
+        weights_1=model.coefs_[1],
+        weights_2=model.coefs_[2],
+        biases_0=model.intercepts_[0],
+        biases_1=model.intercepts_[1],
+        biases_2=model.intercepts_[2]
+    )
+
+    # index of classes
+    # print(model.classes_)
     
 
 if __name__ == "__main__":
     # save_data()
     # save_filled_data()
-    create_model1()
-    create_model2()
+    # create_model1()
+    # create_model2()
+    best_model()
+    get_mean_std()
