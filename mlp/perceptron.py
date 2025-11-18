@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-
 ##################################################
 ################### CONSTANTS ####################
 ##################################################
@@ -28,16 +27,17 @@ CLASSES = ['ChatGPT', 'Claude', 'Gemini']
 BASE_PATH = Path(__file__).parent
 TRAIN_DATA_PATH = Path(__file__).parent.parent / "data/train_data.csv"
 TEST_DATA_PATH = Path(__file__).parent.parent / "data/test_data.csv"
-MODEL_WEIGHT_BIAS_PATH = BASE_PATH / "mlp_model_vals/model_weights_biases.npz"
-DATA_MEAN_STD_PATH = BASE_PATH / "mlp_model_vals/data_mean_std.csv"
 
+#change for keepna vs dropna
+WEIGHT_BIAS_PATH = BASE_PATH / "mlp_dropna_vals/model_weights_biases.npz"
+MEAN_STD_PATH = BASE_PATH / "mlp_dropna_vals/data_mean_std.csv"
 
 
 ##################################################
 ################ PREPARING VALUES ################
 ##################################################
 
-# fill null values with mean values -- found mean from training data
+# fill null values with mean values if keep na -- found mean from training data
 def fill_null(df: pd.DataFrame):
     # replace each with average value
     for column in NA_COLS:
@@ -47,15 +47,15 @@ def fill_null(df: pd.DataFrame):
 
 # implementation of sklearn StandardScaler.fit_transform() -- values from training data
 def scale(df):
-    scaling_params = pd.read_csv(DATA_MEAN_STD_PATH, index_col=0)
+    scaling_params = pd.read_csv(MEAN_STD_PATH, index_col=0)
     df = df[scaling_params.index]
     df_scaled = (df - scaling_params['mean']) / scaling_params['std']
     return df_scaled
 
 def get_data(filename):
     df = pd.read_csv(filename)
-    df = df.drop(NON_NUMERIC + LABELS, axis = 1)
-    df = fill_null(df)
+    df = df.drop(NON_NUMERIC + LABELS + NA_COLS, axis = 1)
+    # df = fill_null(df)
     df = scale(df)
     return df
    
@@ -75,7 +75,7 @@ def softmax(x):
 # predicting from input - single prediction
 def predict(X_input):
     # getting values
-    values = np.load(MODEL_WEIGHT_BIAS_PATH)
+    values = np.load(WEIGHT_BIAS_PATH)
     weights_0 = values['weights_0']
     weights_1 = values['weights_1']
     weights_2 = values['weights_2']
@@ -127,4 +127,4 @@ def accuracy(filepath):
     return acc
     
 if __name__ == "__main__":
-    accuracy(TRAIN_DATA_PATH)
+    accuracy(TEST_DATA_PATH)
