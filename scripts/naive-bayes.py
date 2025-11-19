@@ -2,6 +2,21 @@ import pandas as pd
 import numpy as np
 from sklearn.naive_bayes import BernoulliNB
 from sklearn.metrics import accuracy_score
+import json
+
+# --- HELPER FOR JSON SAVING ---
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+    def default(self, obj):
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+                            np.int16, np.int32, np.int64, np.uint8,
+                            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 def make_bow(text_data_pairs, vocab):
     """
@@ -61,8 +76,11 @@ def create_features(df, text_columns, label_col_name, vocab_list=None, ohe_encod
         'How often do you verify this model\'s responses?'
     ]
     for col in ordinal_columns:
-        mode_val = df_proc[col].mode()[0] if not df_proc[col].mode().empty else 1 
-        df_proc[col] = df_proc[col].fillna(mode_val)
+        if col in df_proc.columns:
+            mode_val = df_proc[col].mode()[0] if not df_proc[col].mode().empty else 1 
+            df_proc[col] = df_proc[col].fillna(mode_val)
+        else:
+            df_proc[col] = 1
         
     # Create the concatenated text pairs for BoW 
     text_data_pairs = []
@@ -102,16 +120,17 @@ def create_features(df, text_columns, label_col_name, vocab_list=None, ohe_encod
     else:
         X_ordinal_list = []
         for col in ordinal_columns:
-            ohe_map = ohe_encoders[col]
-            ohe_df_temp = pd.get_dummies(df_proc_aligned[col], prefix=col)
-            ohe_df_temp.columns = [f"{col}={c}" for c in ohe_df_temp.columns.str.replace(f"{col}_", "")]
-            
-            ohe_df = pd.DataFrame(0, index=df_proc_aligned.index, columns=ohe_map.values())
-            
-            common_cols = ohe_df.columns.intersection(ohe_df_temp.columns)
-            ohe_df[common_cols] = ohe_df_temp[common_cols]
-            
-            X_ordinal_list.append(ohe_df)
+            if col in ohe_encoders:
+                ohe_map = ohe_encoders[col]
+                ohe_df_temp = pd.get_dummies(df_proc_aligned[col], prefix=col)
+                ohe_df_temp.columns = [f"{col}={c}" for c in ohe_df_temp.columns.str.replace(f"{col}_", "")]
+                
+                ohe_df = pd.DataFrame(0, index=df_proc_aligned.index, columns=ohe_map.values())
+                
+                common_cols = ohe_df.columns.intersection(ohe_df_temp.columns)
+                ohe_df[common_cols] = ohe_df_temp[common_cols]
+                
+                X_ordinal_list.append(ohe_df)
 
     X_ordinal = pd.concat(X_ordinal_list, axis=1)
 
@@ -198,6 +217,39 @@ class NaiveBayes:
         scores = pd.concat(posteriors_list, axis=1)
         return scores.idxmax(axis=1)
 
+    def save_model(self, filepath, vocab_list, ohe_encoders):
+        """
+        Saves the trained model weights and preprocessing artifacts to a JSON file.
+        """
+        if self.log_likelihoods_ is None:
+            raise ValueError("Model is not trained yet. Cannot save.")
+            
+        # Prepare dictionary structure
+        # We convert Pandas objects to dicts/lists and use the NumpyEncoder for safe JSON dumping
+        model_dump = {
+            "alpha": self.alpha,
+            "classes": self.classes_, 
+            # Convert Series to list/dict
+            "log_priors": self.log_priors_.to_dict(), 
+            # Convert DataFrames to dictionary (orient='split' preserves index, columns, and data structure)
+            "log_likelihoods": self.log_likelihoods_.to_dict(orient='split'),
+            "log_neg_likelihoods": self.log_neg_likelihoods_.to_dict(orient='split'),
+            # Preprocessing artifacts needed for inference
+            "vocab_list": vocab_list,
+            "ohe_encoders": ohe_encoders
+        }
+        
+        # Ensure ohe_encoders keys are strings (JSON requirement)
+        safe_ohe = {}
+        for col, mapping in ohe_encoders.items():
+            safe_ohe[col] = {str(k): v for k, v in mapping.items()}
+        model_dump["ohe_encoders"] = safe_ohe
+
+        with open(filepath, 'w') as f:
+            json.dump(model_dump, f, cls=NumpyEncoder, indent=4)
+        
+        print(f"Model successfully saved to {filepath}")
+
 
 if __name__ == "__main__":
     k = 8
@@ -212,7 +264,6 @@ if __name__ == "__main__":
     ]
     label_col_name = 'label'
 
-    # print(f"Loading all data for {k}-fold cross-validation")
     try:
         df = pd.read_csv(trainfile).drop(columns=['student_id'])
     except FileNotFoundError:
@@ -222,91 +273,55 @@ if __name__ == "__main__":
     if df.empty:
         print("Stopping: No data was loaded.")
         exit()
-        
-    indices = np.arange(len(df))
-    fold_indices = np.array_split(indices, k)
-    fold_indices = [list(f) for f in fold_indices] 
+
+    split_point = 644
     
-    # print(f"Data split into {k} folds. (Sizes: {[len(f) for f in fold_indices]})")
-
-    fold_accuracies = []
-    fold_accuracies_sklearn = []
-    alphas = [0.1, 0.5, 1.0, 1.5, 2.0]
-
-    for i in range(k):
-        # print(f"\nFold {i+1}/{k}")
-        
-        val_indices = fold_indices[i]
-        train_indices_np = np.concatenate([f_indices for j, f_indices in enumerate(fold_indices) if i != j])
-        train_indices = train_indices_np.tolist()
-        
-        # training and validation dfs
-        df_train = df.loc[train_indices].reset_index(drop=True)
-        df_val = df.loc[val_indices].reset_index(drop=True)
-        
-        # print(f"Training samples: {len(df_train)}, Validation samples: {len(df_val)}")
-
-        # Feature creation
-        X_train, t_train, vocab_list, ohe_encoders = create_features(
-            df_train, text_columns, label_col_name, vocab_list=None, ohe_encoders=None
+    if len(df) > split_point:
+        df_train_manual = df.iloc[:split_point].reset_index(drop=True)
+        df_val_manual = df.iloc[split_point:].reset_index(drop=True)
+                
+        X_train_man, t_train_man, man_vocab, man_ohe = create_features(
+            df_train_manual, text_columns, label_col_name, 
+            vocab_list=None, ohe_encoders=None
         )
-        # print(f"Vocabulary size for this fold: {len(vocab_list)}")
 
-        X_val, t_val, _, _ = create_features(
-            df_val, text_columns, label_col_name, vocab_list=vocab_list, ohe_encoders=ohe_encoders
+        X_val_man, t_val_man, _, _ = create_features(
+            df_val_manual, text_columns, label_col_name, 
+            vocab_list=man_vocab, ohe_encoders=man_ohe
         )
-        
-        if X_train.empty or X_val.empty:
-             print("Skipping fold due to empty feature matrix.")
-             continue
 
-        # Train model
-        model = NaiveBayes(alpha=alpha)
-        model.fit(X_train, t_train)
+        if X_train_man.empty or X_val_man.empty:
+            print("Skipping manual validation: one of the feature matrices is empty.")
+        else:
+            model_man = NaiveBayes(alpha=alpha)
+            model_man.fit(X_train_man, t_train_man)
 
-        # Predict and calculate accuracy
-        t_pred = model.predict(X_val)
-        
-        correct = np.sum(t_pred.values == t_val.values) 
-        total = len(t_val)
-        accuracy = correct / total if total > 0 else 0
-        
-        fold_accuracies.append(accuracy)
-        # print(f"Fold {i+1} Accuracy: {accuracy * 100:.2f}%")
+            model_sklearn = BernoulliNB(alpha=alpha)
+            model_sklearn.fit(X_train_man, t_train_man) 
+            
+            t_pred_man = model_man.predict(X_val_man)
+            accuracy_man = accuracy_score(t_val_man, t_pred_man)
+            print(f"No fold validation: {accuracy_man * 100:.2f}%")
+            
+            t_pred_sklearn = model_sklearn.predict(X_val_man) 
+            accuracy_no_k_sklearn = accuracy_score(t_val_man, t_pred_sklearn)
+            print(f"No fold sklearn validation: {accuracy_man * 100:.2f}%")
 
-        model_sklearn = BernoulliNB(alpha=alpha)
-        model_sklearn.fit(X_train, t_train) 
-        t_pred_sklearn = model_sklearn.predict(X_val) 
-        accuracy_sklearn = accuracy_score(t_val, t_pred_sklearn)
-        fold_accuracies_sklearn.append(accuracy_sklearn)
-        # print(f"Fold {i+1} Sklearn Accuracy: {accuracy_sklearn * 100:.2f}%")
-
-    if fold_accuracies:
-        mean_accuracy = np.mean(fold_accuracies) 
-        print(f"Mean Accuracy (k={k}): {mean_accuracy * 100:.2f}%")
+            
     else:
-        print("\nNo folds were processed")
+        print(f"Skipping manual validation: Dataset has {len(df)} rows, which is not more than {split_point}.")
 
-    if fold_accuracies_sklearn:
-        mean_acc_sklearn = np.mean(fold_accuracies_sklearn)
-        print(f"Mean Sklearn Accuracy (k={k}): {mean_acc_sklearn * 100:.2f}%")
-
-    # TESTING TIME :)
-    try:
-        df = pd.read_csv(trainfile).drop(columns=['student_id'])
-    except FileNotFoundError:
-        print(f"Error: The file '{trainfile}' was not found.")
-        exit()
-
+     # TESTING TIME :)
     X_train_final, t_train_final, final_vocab, final_ohe_encoders = create_features(
         df, text_columns, label_col_name, 
         vocab_list=None, ohe_encoders=None
     )
-    
-    print(f"Final model vocabulary size: {len(final_vocab)}")
 
     final_model = NaiveBayes(alpha=alpha)
     final_model.fit(X_train_final, t_train_final)
+
+    model_filename = "naive_bayes_weights.json"
+    final_model.save_model(model_filename, final_vocab, final_ohe_encoders)
 
     testfile = 'data/test_data.csv' 
 

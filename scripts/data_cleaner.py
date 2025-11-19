@@ -2,16 +2,12 @@ import numpy as np
 import pandas as pd
 import os
 
-if __name__ == "__main__":
-
-    file_name = "data/training_data_clean.csv"
-
+def clean(file_name):
     if not os.path.exists(file_name):
         print(f"Error: File not found at {file_name}")
         print("Please check the file path.")
     else:
         data = pd.read_csv(file_name)
-        print(f"Loaded {file_name} successfully.")
 
         # Convert to integers
         to_int = ["How likely are you to use this model for academic tasks?", "Based on your experience, how often has this model given you a response that felt suboptimal?", "How often do you expect this model to provide responses with references or supporting evidence?", "How often do you verify this model's responses?"]
@@ -19,7 +15,6 @@ if __name__ == "__main__":
         for col in to_int:
             if col in data.columns:
                 data[col] = pd.to_numeric(data[col].astype(str).str.strip().str[0], errors='coerce').astype('Int64')
-                print(f"Converted column to numeric: {col}")
             else:
                 print(f"Warning: expected column {col!r} not found in data")
 
@@ -34,7 +29,6 @@ if __name__ == "__main__":
 
         for col_name, prefix in multi_select_cols_map.items():
             if col_name in data.columns:
-                print(f"Vectorizing multi-select column: {col_name}")
                 
                 list_series = data[col_name].fillna('').str.split(separator)
                 dummies_df = pd.get_dummies(list_series.explode().str.strip()).groupby(level=0).sum()
@@ -50,8 +44,6 @@ if __name__ == "__main__":
                 
                 dummies_df = dummies_df.rename(columns=new_col_names)
                 all_new_cols_df_list.append(dummies_df)
-            else:
-                 print(f"Warning: expected multi-select column {col_name!r} not found in data")
 
         if all_new_cols_df_list:
             data = pd.concat([data] + all_new_cols_df_list, axis=1)
@@ -59,27 +51,17 @@ if __name__ == "__main__":
             data = data.drop(columns=multi_select_cols_map.keys(), errors='ignore')
 
         # Clean remaining object columns
-        print("Cleaning object columns (stripping whitespace, replacing '#NAME?' and empty strings")
         for col in data.columns:
             if data[col].dtype == 'object':
                 data[col] = data[col].str.strip()
                 data[col] = data[col].replace({'#NAME?': pd.NA, '': pd.NA})
 
         # Save Data
-        out_file = 'data/cleaned_data.csv'
+        out_file = 'testing_data.csv'
         out_dir = os.path.dirname(out_file) or '.'
         os.makedirs(out_dir, exist_ok=True)
 
-        train_file = os.path.join(out_dir, 'train_data.csv')
-        test_file = os.path.join(out_dir, 'test_data.csv')
+        data.to_csv(out_file, index=False)
 
-        test_data = data.iloc[743:]
-        train_data = data.drop(test_data.index)
-        
-        test_data.to_csv(test_file, index=False)
-        print(f"Test data (rows 744-825) saved to: {test_file}")
-
-        train_data.to_csv(train_file, index=False)
-        print(f"Train data (all other rows) saved to: {train_file}")
-        
-        print(f"\nData cleaning and vectorization complete. Cleaned data saved to: {out_file}")
+if __name__ == "__main__":
+    clean()
