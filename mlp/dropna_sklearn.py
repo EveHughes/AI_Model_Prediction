@@ -33,14 +33,16 @@ WEIGHT_BIAS_PATH = BASE_PATH / "mlp_dropna_vals/model_weights_biases.npz"
 MEAN_STD_PATH = BASE_PATH / "mlp_dropna_vals/data_mean_std.csv"
 
 # Grid Search
-all_tuples = list(product(range(55, 60), range(15, 20)))
+one_layer_sizes = [(i,) for i in [20, 30, 40, 50, 60]]
+two_layer_sizes = list(product([20, 30, 40, 50, 60], [5, 10, 20]))
+all_hidden_sizes = one_layer_sizes + two_layer_sizes
 GRID_PARAMS = {
-    "hidden_layer_sizes": all_tuples,
+    "hidden_layer_sizes": all_hidden_sizes,
     "learning_rate_init": [0.001, 0.01],
-    "alpha" : [1e-5, 1e-4],
-    "activation": ["relu", "tanh"],
-    "solver" : ['adam', 'sgd']
-    }
+    "alpha": [1e-4, 1e-5],
+    "activation": ["relu"],
+    "solver": ["adam"]
+}
 
 
 ##################################################
@@ -95,7 +97,7 @@ def gridsearch():
     grid = GridSearchCV(
         model,
         GRID_PARAMS,
-        cv=5,
+        cv=6,
         scoring="accuracy",
         n_jobs=-1,
         verbose=1
