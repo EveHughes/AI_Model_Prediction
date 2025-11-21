@@ -27,34 +27,26 @@ LABELS = ['student_id', 'label']
 # File Paths
 BASE_PATH = Path(__file__).parent
 DATA_PATH = Path(__file__).parent.parent / "data/train_data.csv"
-TRAIN_PATH =  BASE_PATH / "mlp_cleaned_data/mlp_train_data.csv"
-FILLED_TRAIN_PATH = BASE_PATH / "mlp_cleaned_data/mlp_filled_train_data.csv"
-MODEL1_GRID_PATH = BASE_PATH / "mlp_grid_search/model1_grid.csv"
-MODEL2_GRID_PATH = BASE_PATH / "mlp_grid_search/model2_grid.csv"
-MODEL_WEIGHT_BIAS_PATH = BASE_PATH / "mlp_model_vals/model_weights_biases.npz"
-DATA_MEAN_STD_PATH = BASE_PATH / "mlp_model_vals/data_mean_std.csv"
-
+TRAIN_PATH =  BASE_PATH / "mlp_cleaned_data/keepna_train_data.csv"
+GRID_PATH = BASE_PATH / "mlp_grid_search/keepna_grid.csv"
+WEIGHT_BIAS_PATH = BASE_PATH / "mlp_keepna_vals/model_weights_biases.npz"
+MEAN_STD_PATH = BASE_PATH / "mlp_keepna_vals/data_mean_std.csv"
 
 # Grid Search
-all_tuples = list(product(range(58, 60), range(18, 20)))
+one_layer_sizes = [(i,) for i in [20, 30, 40, 50, 60]]
+two_layer_sizes = list(product([20, 30, 40, 50, 60], [5, 10, 20]))
+all_hidden_sizes = one_layer_sizes + two_layer_sizes
 GRID_PARAMS = {
-    "hidden_layer_sizes": all_tuples,
+    "hidden_layer_sizes": all_hidden_sizes,
     "learning_rate_init": [0.001, 0.01],
-    "alpha" : [1e-5],
-    "activation": ["relu", "tanh"],
-    "solver" : ['adam', 'sgd']
-    }
-
+    "alpha": [1e-4, 1e-5],
+    "activation": ["relu"],
+    "solver": ["adam"]
+}
 
 ##################################################
 ########### SAVING DATA AND FILLING ##############
 ##################################################
-
-# Save unfilled data
-def save_data():
-    data = pd.read_csv(DATA_PATH)
-    data = data.drop(NON_NUMERIC, axis = 1)
-    data.to_csv(TRAIN_PATH)
 
 # Get columns with null values
 def get_null_columns():
@@ -65,7 +57,7 @@ def get_null_columns():
     print(cols)
 
 # Save filled data
-def save_filled_data():
+def prepare_data():
     data = pd.read_csv(DATA_PATH)
     data = data.drop(NON_NUMERIC, axis = 1)
     
@@ -74,11 +66,11 @@ def save_filled_data():
         val = data[column].mean()
         data[column] = data[column].fillna(val)
 
-    data.to_csv(FILLED_TRAIN_PATH)
+    data.to_csv(TRAIN_PATH)
 
 # saves mean and standard dev for scaling
 def get_mean_std():
-    train_data = pd.read_csv(FILLED_TRAIN_PATH, index_col = 0)
+    train_data = pd.read_csv(TRAIN_PATH, index_col = 0)
     X_train = train_data.drop(LABELS, axis = 1)
     
     scaler = StandardScaler()
@@ -88,50 +80,15 @@ def get_mean_std():
     'std': scaler.scale_
     }, index=X_train.columns)
 
-    scaling_params.to_csv(DATA_MEAN_STD_PATH)
-
-##################################################
-########## CREATING MODEL WITH NO NULL ###########
-##################################################
-
-#Model that DOESN'T take in null columns
-def create_model1():
-    #get data
-    train_data = pd.read_csv(TRAIN_PATH, index_col = 0)
-    t_train = train_data["label"]
-
-    scaler = StandardScaler()
-    X_train = train_data.drop(LABELS + NA_COLS, axis = 1)
-    X_train_scaled = scaler.fit_transform(X_train)
-
-    #grid search
-    model = MLPClassifier(max_iter=1000, random_state=1, batch_size = 33)
-    grid = GridSearchCV(
-        model,
-        GRID_PARAMS,
-        cv=5,
-        scoring="accuracy",
-        n_jobs=-1,
-        verbose=1
-    )
-    grid.fit(X_train_scaled, t_train)
-
-    #best parameters
-    print("Best params:", grid.best_params_)
-    print("Best CV score:", grid.best_score_)
-    results = pd.DataFrame(grid.cv_results_)
-    results = results[['param_hidden_layer_sizes', 'param_learning_rate_init', 'param_solver', 'param_alpha', 'mean_test_score', 'std_test_score']]
-    results = results.sort_values(by='mean_test_score', ascending=False)
-    results.to_csv(MODEL1_GRID_PATH)
-
+    scaling_params.to_csv(MEAN_STD_PATH)
 
 ##################################################
 ######### CREATING MODEL THAT FILLS NULL #########
 ##################################################
 
-def create_model2():
+def gridsearch():
     #get data
-    train_data = pd.read_csv(FILLED_TRAIN_PATH, index_col = 0)
+    train_data = pd.read_csv(TRAIN_PATH, index_col = 0)
     t_train = train_data["label"]
 
     scaler = StandardScaler()
@@ -143,7 +100,7 @@ def create_model2():
     grid = GridSearchCV(
         model,
         GRID_PARAMS,
-        cv=5,
+        cv=6,
         scoring="f1_macro",
         n_jobs=-1,
         verbose=1
@@ -156,16 +113,7 @@ def create_model2():
     results = pd.DataFrame(grid.cv_results_)
     results = results[['param_hidden_layer_sizes', 'param_activation', 'param_learning_rate_init', 'param_solver', 'param_alpha', 'mean_test_score', 'std_test_score']]
     results = results.sort_values(by='mean_test_score', ascending=False)
-    results.to_csv(MODEL2_GRID_PATH)
-
-    #model
-    model2 = grid.best_estimator_
-    y_pred = model2.predict(X_train_scaled)
-
-    # Confusion matrix
-    cm = confusion_matrix(t_train, y_pred)
-    print("Best Params:", grid.best_params_)
-    print("Confusion Matrix:\n", cm)
+    results.to_csv(GRID_PATH)
 
 
 ##################################################
@@ -174,7 +122,7 @@ def create_model2():
 
 def best_model():
     #get data
-    train_data = pd.read_csv(FILLED_TRAIN_PATH, index_col = 0)
+    train_data = pd.read_csv(TRAIN_PATH, index_col = 0)
     t_train = train_data["label"]
 
     scaler = StandardScaler()
@@ -195,9 +143,15 @@ def best_model():
     train_accuracy = model.score(X_train_scaled, t_train)
     print(f"Training Accuracy: {train_accuracy:.4f}")
 
+    
+    # Confusion matrix
+    y_pred = model.predict(X_train_scaled)
+    cm = confusion_matrix(t_train, y_pred)
+    print("Confusion Matrix:\n", cm)
+
     #exporting weights and biases
     np.savez_compressed(
-        MODEL_WEIGHT_BIAS_PATH,
+        WEIGHT_BIAS_PATH,
         weights_0=model.coefs_[0],
         weights_1=model.coefs_[1],
         weights_2=model.coefs_[2],
@@ -208,12 +162,10 @@ def best_model():
 
     # index of classes
     # print(model.classes_)
-    
+
 
 if __name__ == "__main__":
-    # save_data()
-    # save_filled_data()
-    # create_model1()
-    # create_model2()
-    best_model()
+    prepare_data()
     get_mean_std()
+    gridsearch()
+    best_model()
