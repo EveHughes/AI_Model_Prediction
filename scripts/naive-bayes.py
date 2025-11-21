@@ -1,10 +1,12 @@
+from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 from sklearn.naive_bayes import BernoulliNB
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score
 import json
+from sklearn.metrics import f1_score
+from sklearn.metrics import confusion_matrix
 
-# --- HELPER FOR JSON SAVING ---
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
     def default(self, obj):
@@ -277,35 +279,35 @@ if __name__ == "__main__":
     split_point = 644
     
     if len(df) > split_point:
-        df_train_manual = df.iloc[:split_point].reset_index(drop=True)
-        df_val_manual = df.iloc[split_point:].reset_index(drop=True)
+        df_train = df.iloc[:split_point].reset_index(drop=True)
+        df_val = df.iloc[split_point:].reset_index(drop=True)
                 
-        X_train_man, t_train_man, man_vocab, man_ohe = create_features(
-            df_train_manual, text_columns, label_col_name, 
+        X_train, t_train, train_vocab, train_ohe = create_features(
+            df_train, text_columns, label_col_name, 
             vocab_list=None, ohe_encoders=None
         )
 
-        X_val_man, t_val_man, _, _ = create_features(
-            df_val_manual, text_columns, label_col_name, 
-            vocab_list=man_vocab, ohe_encoders=man_ohe
+        X_val, t_val, _, _ = create_features(
+            df_val, text_columns, label_col_name, 
+            vocab_list=train_vocab, ohe_encoders=train_ohe
         )
 
-        if X_train_man.empty or X_val_man.empty:
+        if X_train.empty or X_val.empty:
             print("Skipping manual validation: one of the feature matrices is empty.")
         else:
-            model_man = NaiveBayes(alpha=alpha)
-            model_man.fit(X_train_man, t_train_man)
+            model = NaiveBayes(alpha=alpha)
+            model.fit(X_train, t_train)
 
             model_sklearn = BernoulliNB(alpha=alpha)
-            model_sklearn.fit(X_train_man, t_train_man) 
+            model_sklearn.fit(X_train, t_train) 
             
-            t_pred_man = model_man.predict(X_val_man)
-            accuracy_man = accuracy_score(t_val_man, t_pred_man)
-            print(f"No fold validation: {accuracy_man * 100:.2f}%")
+            t_pred = model.predict(X_val)
+            accuracy = accuracy_score(t_val, t_pred)
+            print(f"Validation: {accuracy * 100:.2f}%")
             
-            t_pred_sklearn = model_sklearn.predict(X_val_man) 
-            accuracy_no_k_sklearn = accuracy_score(t_val_man, t_pred_sklearn)
-            print(f"No fold sklearn validation: {accuracy_man * 100:.2f}%")
+            t_pred_sklearn = model_sklearn.predict(X_val) 
+            accuracy_no_k_sklearn = accuracy_score(t_val, t_pred_sklearn)
+            print(f"Sklearn validation: {accuracy * 100:.2f}%")
 
             
     else:
@@ -352,6 +354,14 @@ if __name__ == "__main__":
          
     # Make predictions on the test set
     t_pred_test = final_model.predict(X_test)
+    f_score = f1_score(t_test, t_pred_test, average='macro')
+    print(f"FINAL MACRO F1 SCORE: {f_score:.4f}") # Added print for F1 score
+    cm = confusion_matrix(t_test, t_pred_test)
+    class_names = ["ChatGPT", "Gemini", "Claude"]
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title("Naive Bayes Confusion Matrix")
+    plt.show()
 
     if not t_test.empty:
         test_accuracy = accuracy_score(t_test, t_pred_test)
