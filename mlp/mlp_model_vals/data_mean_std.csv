@@ -1,0 +1,27 @@
+,mean,std
+How likely are you to use this model for academic tasks?,2.985215053763441,1.2651434136008792
+"Based on your experience, how often has this model given you a response that felt suboptimal?",2.8627187079407808,0.8920175484449937
+How often do you expect this model to provide responses with references or supporting evidence?,2.8055555555555554,1.0991062949281916
+How often do you verify this model's responses?,3.174324324324324,1.2456980608558843
+best_task_brainstorming_or_generating_creative_ideas,0.41935483870967744,0.49345350131543075
+best_task_converting_content_between_formats_e.g.,0.3225806451612903,0.467463766006111
+best_task_data_processing_or_analysis,0.3077956989247312,0.4615815276288333
+best_task_drafting_professional_text_e.g.,0.4529569892473118,0.49778203577401464
+best_task_explaining_complex_concepts_simply,0.5577956989247311,0.4966484241249556
+best_task_latex,0.3225806451612903,0.467463766006111
+best_task_math_computations,0.22311827956989247,0.41633701840175563
+best_task_writing_or_debugging_code,0.4731182795698925,0.4992768501610279
+best_task_writing_or_editing_essays/reports,0.3803763440860215,0.48547933112108294
+best_task_emails,0.4529569892473118,0.49778203577401464
+best_task_résumés,0.4529569892473118,0.49778203577401464
+subopt_task_brainstorming_or_generating_creative_ideas,0.26881720430107525,0.44334469092663015
+subopt_task_converting_content_between_formats_e.g.,0.2217741935483871,0.4154400084541084
+subopt_task_data_processing_or_analysis,0.353494623655914,0.4780545729331305
+subopt_task_drafting_professional_text_e.g.,0.17204301075268819,0.37741782311363964
+subopt_task_explaining_complex_concepts_simply,0.17204301075268819,0.37741782311363964
+subopt_task_latex,0.2217741935483871,0.4154400084541084
+subopt_task_math_computations,0.5604838709677419,0.4963282193798349
+subopt_task_writing_or_debugging_code,0.43413978494623656,0.49564345256754083
+subopt_task_writing_or_editing_essays/reports,0.27553763440860213,0.44678478760261486
+subopt_task_emails,0.17204301075268819,0.37741782311363964
+subopt_task_résumés,0.17204301075268819,0.37741782311363964
